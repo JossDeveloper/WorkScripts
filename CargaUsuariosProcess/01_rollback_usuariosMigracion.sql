@@ -1,0 +1,88 @@
+USE Nucleo
+
+
+DECLARE @MIG TABLE (PERSONA_ID INT, USUARIO_ID INT)
+DECLARE @MAXID INT
+
+BEGIN TRY
+	BEGIN TRANSACTION
+
+		INSERT INTO @MIG
+		select TMU.N_ID_PERSONA, TMU.N_ID_USUARIO 
+		from T_MAE_USUARIO TMU
+		where TMU.C_COD_USUARIO is NULL and RTRIM(TMU.C_COD_USUCREACION) = 'Migración'
+
+		INSERT INTO @MIG
+		select TMU.N_ID_PERSONA, TMU.N_ID_USUARIO 
+		from T_MAE_USUARIO TMU
+		where TMU.C_COD_USUARIO is NULL and NOT EXISTS (select TDP.N_ID_PERSONA from T_DET_PERSONA TDP where TDP.N_ID_PERSONA = TMU.N_ID_PERSONA)
+
+		INSERT INTO @MIG
+		select TMU.N_ID_PERSONA, TMU.N_ID_USUARIO 
+		from T_MAE_USUARIO TMU
+		where TMU.C_COD_USUARIO = 'Migración'
+		
+		PRINT 'Rollback Usuario...'
+		
+		delete t
+		from T_MAE_USUARIO_CANAL_PTOVENTA t inner join @MIG temp on t.N_ID_USUARIO = temp.USUARIO_ID
+
+		delete t
+		from T_MAE_USUARIO_CIA_PRODUCTO_PLAN t inner join @MIG temp on t.N_ID_USUARIO = temp.USUARIO_ID
+
+		delete t
+		from T_DET_USUARIOCLAVE t inner join @MIG temp on t.N_ID_USUARIO = temp.USUARIO_ID
+
+		delete t
+		from T_DET_USUARIOPERFIL t inner join @MIG temp on t.N_ID_USUARIO = temp.USUARIO_ID
+
+		delete t
+		from T_DET_USUARIOOPCIONPERFIL t inner join @MIG temp on t.N_ID_USUARIO = temp.USUARIO_ID
+		
+		delete t
+		from T_MAE_USUARIO t inner join @MIG temp on t.N_ID_USUARIO = temp.USUARIO_ID
+		
+		PRINT 'Rollback Persona...'
+
+		delete TDP
+		from T_MAE_PERSONA TMP inner join T_DET_PERSONA TDP on TMP.N_ID_PERSONA = TDP.N_ID_PERSONA
+		where TMP.N_ID_ENTIDAD IS NULL and RTRIM(TMP.C_COD_USUCREACION) = 'Migración' 
+
+		delete TDP
+		from T_MAE_PERSONA TMP inner join T_DET_PERSONA TDP on TMP.N_ID_PERSONA = TDP.N_ID_PERSONA
+		where TMP.N_ID_ENTIDAD IS NULL and TMP.C_OBS_DESCRIPTIVO like 'Migrac%'
+		
+		delete t
+		from T_DET_PERSONA t inner join @MIG temp on t.N_ID_PERSONA = temp.PERSONA_ID
+
+		delete TMP 
+		from T_MAE_PERSONA TMP 
+		where TMP.N_ID_PERSONA <> 1 and TMP.N_ID_ENTIDAD IS NULL and NOT EXISTS (select TMU.N_ID_PERSONA from T_MAE_USUARIO TMU where TMU.N_ID_PERSONA = TMP.N_ID_PERSONA)
+
+		delete TMP 
+		from T_MAE_PERSONA TMP 
+		where TMP.N_ID_PERSONA <> 1 and N_ID_ENTIDAD is NULL and TMP.C_OBS_DESCRIPTIVO like 'Migrac%'
+
+		delete TMP 
+		from T_MAE_PERSONA TMP 
+		where TMP.N_ID_PERSONA <> 1 and C_NOM_COMPLETO like 'Migración%'
+		
+		delete t
+		from T_MAE_PERSONA t inner join @MIG temp on t.N_ID_PERSONA = temp.PERSONA_ID
+
+
+		SET @MAXID = ISNULL((SELECT MAX(N_ID_USUARIO) FROM T_MAE_USUARIO), 0)
+		DBCC CHECKIDENT([T_MAE_USUARIO], RESEED, @MAXID)
+
+		SET @MAXID = ISNULL((SELECT MAX(N_ID_DETPERSONA) FROM T_DET_PERSONA), 0)
+		DBCC CHECKIDENT([T_DET_PERSONA], RESEED, @MAXID)
+
+		SET @MAXID = ISNULL((SELECT MAX(N_ID_PERSONA) FROM T_MAE_PERSONA), 0)
+		DBCC CHECKIDENT([T_MAE_PERSONA], RESEED, @MAXID)
+
+	COMMIT TRANSACTION
+END TRY
+BEGIN CATCH
+    ROLLBACK TRANSACTION;
+    PRINT 'Error: ' + ERROR_MESSAGE(); 
+END CATCH;
